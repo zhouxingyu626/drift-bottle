@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>漂流瓶 - 匿名社交</title>
+<style>
+  :root {
+    --primary: #6C5CE7;
+    --primary-light: #A29BFE;
+    --primary-dark: #5A4BD1;
+    --accent: #00CEC9;
+    --accent-light: #81ECEC;
+    --bg: #0F0F1A;
+    --bg-card: #1A1A2E;
+    --bg-card-hover: #222240;
+    --bg-input: #16162B;
+    --text: #E8E8F0;
+    --text-secondary: #9999B3;
+    --text-muted: #666680;
+    --border: #2A2A45;
+    --danger: #FF6B6B;
+    --danger-light: #FF8E8E;
+    --warning: #FDCB6E;
+    --success: #00B894;
+    --glass: rgba(26, 26, 46, 0.85);
+    --shadow: 0 8px 32px rgba(0,0,0,0.3);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background Animation */
+  .bg-ocean {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none; overflow: hidden;
+  }
+  .bubble {
+    position: absolute; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(108,92,231,0.15), rgba(0,206,201,0.08));
+    animation: float-up linear infinite;
+  }
+  @keyframes float-up {
+    0% { transform: translateY(100vh) scale(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+  }
+
+  /* App Container */
+  .app {
+    position: relative; z-index: 1;
+    max-width: 480px; margin: 0 auto;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    padding: 16px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-title {
+    font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-light), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: none; background: var(--bg-card);
+    color: var(--text); font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .icon-btn:hover { background: var(--primary); transform: scale(1.05); }
+  .icon-btn.active { background: var(--primary); }
+
+  /* Pages */
+  .page { display: none; flex: 1; padding-bottom: 70px; }
+  .page.active { display: block; }
+
+  /* Login Page */
+  .login-page {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh; padding: 40px 20px;
+    padding-bottom: 40px;
+  }
+  .login-logo {
+    width: 100px; height: 100px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px; margin-bottom: 24px;
+    box-shadow: 0 0 40px rgba(108,92,231,0.3);
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 40px rgba(108,92,231,0.3); }
+    50% { box-shadow: 0 0 60px rgba(108,92,231,0.5); }
+  }
+  .login-title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .login-subtitle { color: var(--text-secondary); margin-bottom: 32px; text-align: center; }
+  .login-form { width: 100%; max-width: 360px; }
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  .form-input {
+    width: 100%; padding: 14px 16px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg-input);
+    color: var(--text); font-size: 15px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: var(--primary); }
+  .form-input::placeholder { color: var(--text-muted); }
+  .btn {
+    width: 100%; padding: 14px; border-radius: var(--radius-sm);
+    border: none; font-size: 16px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; display: flex;
+    align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(108,92,231,0.4); }
+  .btn-secondary {
+    background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--primary); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: var(--danger-light); }
+  .btn-sm { padding: 8px 16px; font-size: 13px; width: auto; }
+  .btn-icon { width: auto; padding: 8px 14px; }
+
+  /* Tab Navigation */
+  .tab-nav {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    display: flex; background: var(--glass);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    z-index: 100; padding: 6px 0;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .tab-item {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; gap: 2px; padding: 8px 0;
+    border: none; background: none; color: var(--text-muted);
+    font-size: 11px; cursor: pointer; transition: all 0.2s;
+  }
+  .tab-item .tab-icon { font-size: 22px; }
+  .tab-item.active { color: var(--primary-light); }
+  .tab-item:hover { color: var(--primary-light); }
+
+  /* Ocean / Bottle List */
+  .ocean-header {
+    padding: 20px; text-align: center;
+  }
+  .ocean-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .ocean-desc { font-size: 13px; color: var(--text-secondary); }
+  .bottle-list { padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* Bottle Card */
+  .bottle-card {
+    background: var(--bg-card); border-radius: var(--radius);
+    padding: 18px; border: 1px solid var(--border);
+    transition: all 0.2s; cursor: pointer;
+    animation: card-in 0.4s ease-out;
+  }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .bottle-card:hover { border-color: var(--primary); background: var(--bg-card-hover); }
+  .bottle-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .bottle-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .bottle-avatar.anonymous {
+    background: linear-gradient(135deg, #636e72, #2d3436);
+  }
+  .bottle-avatar.named {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+  }
+  .bottle-meta { flex: 1; }
+  .bottle-author { font-size: 14px; font-weight: 600; }
+  .bottle-time { font-size: 11px; color: var(--text-muted); }
+  .bottle-content { font-size: 15px; line-height: 1.6; margin-bottom: 14px; word-break: break-word; }
+  .bottle-footer { display: flex; align-items: center; gap: 16px; }
+  .bottle-action {
+    display: flex; align-items: center; gap: 5px;
+    border: none; background: none; color: var(--text-secondary);
+    font-size: 13px; cursor: pointer; padding: 4px 8px;
+    border-radius: var(--radius-xs); transition: all 0.2s;
+  }
+  .bottle-action:hover { background: rgba(108,92,231,0.15); color: var(--primary-light); }
+  .bottle-action.liked { color: var(--danger); }
+  .bottle-action .action-icon { font-size: 16px; }
+  .bottle-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: rgba(108,92,231,0.15); color: var(--primary-light);
+  }
+  .bottle-tag.admin-tag { background: rgba(0,184,148,0.15); color: var(--success); }
+
+  /* Send Bottle */
+  .send-page { padding: 20px; }
+  .send-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+  .send-area {
+    width: 100%; min-height: 200px; padding: 16px;
+    border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--bg-input); color: var(--text);
+    font-size: 15px; line-height: 1.6; resize: vertical;
+    outline: none; font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .send-area:focus { border-color: var(--primary); }
+  .send-area::placeholder { color: var(--text-muted); }
+  .send-options {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 16px; flex-wrap: wrap; gap: 12px;
+  }
+  .toggle-group { display: flex; align-items: center; gap: 10px; }
+  .toggle-label { font-size: 14px; color: var(--text-secondary); }
+  .toggle {
+    width: 48px; height: 26px; border-radius: 13px;
+    background: var(--border); position: relative;
+    cursor: pointer; transition: background 0.3s;
+  }
+  .toggle.active { background: var(--primary); }
+  .toggle::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: white; transition: transform 0.3s;
+  }
+  .toggle.active::after { transform: translateX(22px); }
+  .char-count { font-size: 12px; color: var(--text-muted); }
+  .char-count.warn { color: var(--warning); }
+  .char-count.over { color: var(--danger); }
+  .send-btn-wrap { margin-top: 20px; }
+
+  /* My Bottles */
+  .my-page { padding: 20px; }
+  .my-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .my-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  .filter-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-tab {
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: none; color: var(--text-secondary); font-size: 13px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .filter-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+  /* Detail / Reply */
+  .detail-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 200;
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .detail-overlay.active { display: flex; }
+  .detail-panel {
+    width: 100%; max-width: 480px; max-height: 85vh;
+    background: var(--bg); border-radius: 20px 20px 0 0;
+    display: flex; flex-direction: column;
+    animation: slide-up 0.3s ease-out;
+  }
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .detail-header {
+    padding: 16px 20px; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid var(--border);
+  }
+  .detail-header-title { font-size: 16px; font-weight: 600; }
+  .detail-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .detail-bottle { margin-bottom: 20px; }
+  .reply-list { display: flex; flex-direction: column; gap: 12px; }
+  .reply-item {
+    padding: 14px; border-radius: var(--radius-sm);
+    background: var(--bg-card); border: 1px solid var(--border);
+  }
+  .reply-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .reply-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .reply-avatar.anonymous { background: linear-gradient(135deg, #636e72, #2d3436); }
+  .reply-avatar.named { background: linear-gradient(135deg, var(--primary), var(--accent)); }
+  .reply-author { font-size: 13px; font-weight: 600; }
+  .reply-time { font-size: 11px; color: var(--text-muted); }
+  .reply-content { font-size: 14px; line-height: 1.5; }
+  .reply-actions { display: flex; gap: 12px; margin-top: 8px; }
+  .detail-footer {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 10px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .reply-input {
+    flex: 1; padding: 10px 14px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--bg-input);
+    color: var(--text); font-size: 14px; outline: none;
+  }
+  .reply-input:focus { border-color: var(--primary); }
+  .reply-send-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: none; background: var(--primary);
+    color: white; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .reply-send-btn:hover { background: var(--primary-dark); transform: scale(1.05); }
+
+  /* Admin Panel */
+  .admin-page { padding: 20px; }
+  .admin-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .admin-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  .admin-section {
+    background: var(--bg-card); border-radius: var(--radius);
+    padding: 18px; margin-bottom: 16px; border: 1px solid var(--border);
+  }
+  .admin-section-title {
+    font-size: 15px; font-weight: 600; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .word-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .word-tag {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 16px;
+    background: rgba(255,107,107,0.12); color: var(--danger-light);
+    font-size: 13px;
+  }
+  .word-tag .remove-word {
+    cursor: pointer; font-size: 15px; opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .word-tag .remove-word:hover { opacity: 1; }
+  .add-word-row { display: flex; gap: 8px; }
+  .add-word-input {
+    flex: 1; padding: 8px 12px; border-radius: var(--radius-xs);
+    border: 1px solid var(--border); background: var(--bg-input);
+    color: var(--text); font-size: 13px; outline: none;
+  }
+  .add-word-input:focus { border-color: var(--primary); }
+  .admin-stat { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .admin-stat:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-secondary); font-size: 14px; }
+  .stat-value { font-weight: 600; color: var(--primary-light); }
+  .reported-list { display: flex; flex-direction: column; gap: 10px; }
+  .reported-item {
+    padding: 12px; border-radius: var(--radius-sm);
+    background: var(--bg-input); border: 1px solid var(--border);
+  }
+  .reported-content { font-size: 14px; margin-bottom: 8px; }
+  .reported-actions { display: flex; gap: 8px; }
+
+  /* Profile Page */
+  .profile-page { padding: 20px; }
+  .profile-card {
+    background: var(--bg-card); border-radius: var(--radius);
+    padding: 24px; text-align: center; margin-bottom: 20px;
+    border: 1px solid var(--border);
+  }
+  .profile-avatar {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; margin: 0 auto 12px;
+  }
+  .profile-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .profile-role { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+  .profile-stats { display: flex; justify-content: center; gap: 32px; }
+  .profile-stat { text-align: center; }
+  .profile-stat-num { font-size: 20px; font-weight: 700; color: var(--primary-light); }
+  .profile-stat-label { font-size: 12px; color: var(--text-muted); }
+  .profile-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .profile-action-btn {
+    width: 100%; padding: 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--text); font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: all 0.2s;
+  }
+  .profile-action-btn:hover { border-color: var(--primary); }
+  .profile-action-btn.danger { color: var(--danger); }
+
+  /* Toast */
+  .toast-container {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 999; display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 12px 20px; border-radius: var(--radius-sm);
+    background: var(--glass); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); color: var(--text);
+    font-size: 14px; animation: toast-in 0.3s ease-out;
+    pointer-events: auto; white-space: nowrap;
+  }
+  .toast.success { border-color: var(--success); }
+  .toast.error { border-color: var(--danger); }
+  .toast.warning { border-color: var(--warning); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Empty State */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-text { font-size: 15px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 300;
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--bg-card); border-radius: var(--radius);
+    padding: 24px; width: 100%; max-width: 360px;
+    border: 1px solid var(--border);
+    animation: modal-in 0.3s ease-out;
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+  .modal-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
+  .modal-actions { display: flex; gap: 10px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Responsive */
+  @media (min-width: 481px) {
+    .app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  }
+
+  /* Admin badge */
+  .admin-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px;
+    background: rgba(0,184,148,0.15); color: var(--success);
+    font-size: 11px; font-weight: 600;
+  }
+
+  /* Blocked notice */
+  .blocked-notice {
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.2);
+    color: var(--danger-light); font-size: 13px; margin-bottom: 16px;
+    display: none;
+  }
+  .blocked-notice.show { display: block; }
+
+  /* User management */
+  .user-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; border-radius: var(--radius-sm);
+    background: var(--bg-input); margin-bottom: 8px;
+  }
+  .user-item-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .user-item-info { flex: 1; }
+  .user-item-name { font-size: 14px; font-weight: 600; }
+  .user-item-meta { font-size: 11px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- Background Bubbles -->
+<div class="bg-ocean" id="bgOcean"></div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- App -->
+<div class="app" id="app">
+
+  <!-- Login Page -->
+  <div class="login-page page active" id="loginPage">
+    <div class="login-logo">🫧</div>
+    <div class="login-title">漂流瓶</div>
+    <div class="login-subtitle">匿名倾诉，温暖回应<br>把心事装进瓶子，投向大海</div>
+    <div class="login-form">
+      <div class="form-group">
+        <label class="form-label">昵称</label>
+        <input class="form-input" id="loginName" placeholder="给自己取个名字吧" maxlength="12">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" id="loginPass" type="password" placeholder="设置登录密码" maxlength="20">
+      </div>
+      <div class="form-group" style="margin-top:20px">
+        <button class="btn btn-primary" onclick="handleLogin()">登录 / 注册</button>
+      </div>
+      <div style="text-align:center;margin-top:16px">
+        <span style="font-size:12px;color:var(--text-muted)">首次输入将自动创建账号</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content (hidden until login) -->
+  <div id="mainContent" style="display:none;flex:1;display:none;flex-direction:column">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">🫧 漂流瓶</div>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="switchTab('profile')" title="我的">👤</button>
+      </div>
+    </div>
+
+    <!-- Ocean Page -->
+    <div class="page active" id="oceanPage">
+      <div class="ocean-header">
+        <div class="ocean-title">🌊 大海</div>
+        <div class="ocean-desc">捞一个漂流瓶，倾听别人的故事</div>
+      </div>
+      <div class="bottle-list" id="oceanList"></div>
+    </div>
+
+    <!-- Send Page -->
+    <div class="page" id="sendPage">
+      <div class="send-page">
+        <div class="send-title">✍️ 写下心事</div>
+        <div class="blocked-notice" id="sendBlockedNotice">
+          ⚠️ 你的发言包含敏感内容，请修改后重试
+        </div>
+        <textarea class="send-area" id="sendContent" placeholder="把你的心事、烦恼、快乐写在这里...&#10;别人会收到你的漂流瓶并给你回复哦~" maxlength="500" oninput="updateCharCount()"></textarea>
+        <div class="send-options">
+          <div class="toggle-group">
+            <span class="toggle-label">🔒 匿名发送</span>
+            <div class="toggle active" id="anonToggle" onclick="toggleAnon()"></div>
+          </div>
+          <span class="char-count" id="charCount">0 / 500</span>
+        </div>
+        <div class="send-btn-wrap">
+          <button class="btn btn-primary" onclick="sendBottle()">🫧 投入大海</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- My Page -->
+    <div class="page" id="myPage">
+      <div class="my-page">
+        <div class="my-title">📬 我的瓶子</div>
+        <div class="my-desc">查看你发送的漂流瓶和收到的回复</div>
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="filterMy('sent',this)">已发送</button>
+          <button class="filter-tab" onclick="filterMy('replied',this)">已回复</button>
+          <button class="filter-tab" onclick="filterMy('liked',this)">已点赞</button>
+        </div>
+        <div class="bottle-list" id="myList"></div>
+      </div>
+    </div>
+
+    <!-- Admin Page -->
+    <div class="page" id="adminPage">
+      <div class="admin-page">
+        <div class="admin-title">🛡️ 管理面板</div>
+        <div class="admin-desc">管理屏蔽词、查看举报和处理违规内容</div>
+
+        <!-- Stats -->
+        <div class="admin-section">
+          <div class="admin-section-title">📊 数据统计</div>
+          <div class="admin-stat">
+            <span class="stat-label">总漂流瓶数</span>
+            <span class="stat-value" id="statTotal">0</span>
+          </div>
+          <div class="admin-stat">
+            <span class="stat-label">今日新增</span>
+            <span class="stat-value" id="statToday">0</span>
+          </div>
+          <div class="admin-stat">
+            <span class="stat-label">总用户数</span>
+            <span class="stat-value" id="statUsers">0</span>
+          </div>
+          <div class="admin-stat">
+            <span class="stat-label">总回复数</span>
+            <span class="stat-value" id="statReplies">0</span>
+          </div>
+        </div>
+
+        <!-- Blocked Words -->
+        <div class="admin-section">
+          <div class="admin-section-title">🚫 屏蔽词管理</div>
+          <div class="word-list" id="wordList"></div>
+          <div class="add-word-row">
+            <input class="add-word-input" id="newWordInput" placeholder="输入屏蔽词" maxlength="20">
+            <button class="btn btn-sm btn-primary" onclick="addBlockedWord()">添加</button>
+          </div>
+        </div>
+
+        <!-- User Management -->
+        <div class="admin-section">
+          <div class="admin-section-title">👥 用户管理</div>
+          <div id="userList"></div>
+        </div>
+
+        <!-- Reported -->
+        <div class="admin-section">
+          <div class="admin-section-title">🚩 举报处理</div>
+          <div class="reported-list" id="reportedList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Profile Page -->
+    <div class="page" id="profilePage">
+      <div class="profile-page">
+        <div class="profile-card">
+          <div class="profile-avatar" id="profileAvatar">😊</div>
+          <div class="profile-name" id="profileName">-</div>
+          <div class="profile-role" id="profileRole">普通用户</div>
+          <div class="profile-stats">
+            <div class="profile-stat">
+              <div class="profile-stat-num" id="pStatSent">0</div>
+              <div class="profile-stat-label">发送</div>
+            </div>
+            <div class="profile-stat">
+              <div class="profile-stat-num" id="pStatReply">0</div>
+              <div class="profile-stat-label">回复</div>
+            </div>
+            <div class="profile-stat">
+              <div class="profile-stat-num" id="pStatLike">0</div>
+              <div class="profile-stat-label">点赞</div>
+            </div>
+          </div>
+        </div>
+        <div class="profile-actions">
+          <button class="profile-action-btn" onclick="switchTab('admin')" id="adminEntry" style="display:none">
+            <span>🛡️ 管理面板</span><span>›</span>
+          </button>
+          <button class="profile-action-btn" onclick="showEditName()">
+            <span>✏️ 修改昵称</span><span>›</span>
+          </button>
+          <button class="profile-action-btn danger" onclick="handleLogout()">
+            <span>🚪 退出登录</span><span>›</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-item active" onclick="switchTab('ocean')">
+        <span class="tab-icon">🌊</span><span>大海</span>
+      </button>
+      <button class="tab-item" onclick="switchTab('send')">
+        <span class="tab-icon">✍️</span><span>扔瓶子</span>
+      </button>
+      <button class="tab-item" onclick="switchTab('my')">
+        <span class="tab-icon">📬</span><span>我的</span>
+      </button>
+      <button class="tab-item" onclick="switchTab('profile')">
+        <span class="tab-icon">👤</span><span>我的</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Overlay -->
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-panel">
+    <div class="detail-header">
+      <span class="detail-header-title">漂流瓶详情</span>
+      <button class="icon-btn" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+    <div class="detail-footer">
+      <input class="reply-input" id="replyInput" placeholder="写下你的回复..." maxlength="300">
+      <button class="reply-send-btn" onclick="sendReply()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+// ==================== DATA LAYER ====================
+const DB = {
+  get(key, def) {
+    try { const v = localStorage.getItem('drift_' + key); return v ? JSON.parse(v) : def; }
+    catch { return def; }
+  },
+  set(key, val) { localStorage.setItem('drift_' + key, JSON.stringify(val)); }
+};
+
+// Initialize data
+function initData() {
+  if (!DB.get('inited')) {
+    DB.set('users', {});
+    DB.set('bottles', []);
+    DB.set('blockedWords', ['垃圾', '骗子', '诈骗', '色情', '赌博', '毒品', '枪支', '杀', '死全家']);
+    DB.set('reports', []);
+    DB.set('adminAccounts', ['admin', '管理员']);
+    DB.set('inited', true);
+  }
+}
+
+// ==================== STATE ====================
+let currentUser = null;
+let currentTab = 'ocean';
+let currentDetailBottle = null;
+let myFilter = 'sent';
+let isAnon = true;
+
+// ==================== INIT ====================
+initData();
+createBubbles();
+
+// Check session
+const session = DB.get('session');
+if (session) {
+  const users = DB.get('users', {});
+  if (users[session.name]) {
+    currentUser = session;
+    enterApp();
+  }
+}
+
+// ==================== AUTH ====================
+function handleLogin() {
+  const name = document.getElementById('loginName').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  if (!name) return toast('请输入昵称', 'error');
+  if (!pass) return toast('请输入密码', 'error');
+  if (name.length < 2) return toast('昵称至少2个字符', 'error');
+  if (pass.length < 3) return toast('密码至少3个字符', 'error');
+
+  const users = DB.get('users', {});
+  if (users[name]) {
+    if (users[name].password !== pass) return toast('密码错误', 'error');
+  } else {
+    users[name] = { password: pass, createdAt: Date.now(), avatar: getRandomEmoji() };
+    DB.set('users', users);
+  }
+  currentUser = { name };
+  DB.set('session', currentUser);
+  enterApp();
+  toast('欢迎回来，' + name + '！', 'success');
+}
+
+function handleLogout() {
+  currentUser = null;
+  DB.set('session', null);
+  document.getElementById('mainContent').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('loginPage').classList.add('active');
+  document.getElementById('loginName').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+function enterApp() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('loginPage').classList.remove('active');
+  const mc = document.getElementById('mainContent');
+  mc.style.display = 'flex';
+  mc.style.flexDirection = 'column';
+  mc.style.flex = '1';
+
+  // Check admin
+  const admins = DB.get('adminAccounts', []);
+  const isAdmin = admins.includes(currentUser.name);
+  document.getElementById('adminEntry').style.display = isAdmin ? 'flex' : 'none';
+
+  updateProfile();
+  loadOcean();
+  switchTab('ocean');
+}
+
+// ==================== TABS ====================
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+
+  const pageMap = { ocean: 'oceanPage', send: 'sendPage', my: 'myPage', admin: 'adminPage', profile: 'profilePage' };
+  const tabIdx = { ocean: 0, send: 1, my: 2, profile: 3 };
+
+  if (pageMap[tab]) {
+    document.getElementById(pageMap[tab]).classList.add('active');
+  }
+  if (tabIdx[tab] !== undefined) {
+    document.querySelectorAll('.tab-item')[tabIdx[tab]].classList.add('active');
+  }
+
+  if (tab === 'ocean') loadOcean();
+  if (tab === 'my') loadMyBottles();
+  if (tab === 'admin') loadAdmin();
+  if (tab === 'profile') updateProfile();
+}
+
+// ==================== BOTTLES ====================
+function sendBottle() {
+  const content = document.getElementById('sendContent').value.trim();
+  if (!content) return toast('请写点什么吧~', 'warning');
+  if (content.length < 5) return toast('内容太短了，至少写5个字', 'warning');
+
+  // Check blocked words
+  const blocked = DB.get('blockedWords', []);
+  const found = blocked.find(w => content.includes(w));
+  if (found) {
+    document.getElementById('sendBlockedNotice').classList.add('show');
+    toast('内容包含敏感词，请修改', 'error');
+    return;
+  }
+  document.getElementById('sendBlockedNotice').classList.remove('show');
+
+  const users = DB.get('users', {});
+  const bottle = {
+    id: 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    author: isAnon ? null : currentUser.name,
+    content,
+    isAnon,
+    likes: [],
+    replies: [],
+    reports: [],
+    createdAt: Date.now(),
+    deleted: false
+  };
+
+  const bottles = DB.get('bottles', []);
+  bottles.unshift(bottle);
+  DB.set('bottles', bottles);
+
+  document.getElementById('sendContent').value = '';
+  updateCharCount();
+  toast('漂流瓶已投入大海~ 🫧', 'success');
+  switchTab('ocean');
+}
+
+function loadOcean() {
+  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
+  const list = document.getElementById('oceanList');
+
+  if (bottles.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🌊</div><div class="empty-text">大海空空如也，去扔一个瓶子吧~</div></div>';
+    return;
+  }
+
+  list.innerHTML = bottles.map(b => renderBottleCard(b)).join('');
+}
+
+function renderBottleCard(b) {
+  const users = DB.get('users', {});
+  const isAnon = b.isAnon || !b.author;
+  const authorName = isAnon ? '匿名用户' : b.author;
+  const avatarEmoji = isAnon ? '🎭' : (users[b.author]?.avatar || '😊');
+  const avatarClass = isAnon ? 'anonymous' : 'named';
+  const liked = b.likes.includes(currentUser?.name);
+  const admins = DB.get('adminAccounts', []);
+  const isAdmin = currentUser && admins.includes(currentUser.name);
+  const timeStr = formatTime(b.createdAt);
+
+  return `
+    <div class="bottle-card" onclick="openDetail('${b.id}')">
+      <div class="bottle-header">
+        <div class="bottle-avatar ${avatarClass}">${avatarEmoji}</div>
+        <div class="bottle-meta">
+          <div class="bottle-author">${escHtml(authorName)} ${isAnon ? '<span class="bottle-tag">匿名</span>' : ''}</div>
+          <div class="bottle-time">${timeStr}</div>
+        </div>
+      </div>
+      <div class="bottle-content">${escHtml(b.content)}</div>
+      <div class="bottle-footer">
+        <button class="bottle-action ${liked ? 'liked' : ''}" onclick="event.stopPropagation();toggleLike('${b.id}')">
+          <span class="action-icon">${liked ? '❤️' : '🤍'}</span>
+          <span>${b.likes.length}</span>
+        </button>
+        <button class="bottle-action" onclick="event.stopPropagation();openDetail('${b.id}')">
+          <span class="action-icon">💬</span>
+          <span>${b.replies.length}</span>
+        </button>
+        ${isAdmin ? `<button class="bottle-action" onclick="event.stopPropagation();deleteBottle('${b.id}')">
+          <span class="action-icon">🗑️</span>
+        </button>` : ''}
+        <button class="bottle-action" onclick="event.stopPropagation();reportBottle('${b.id}')" style="margin-left:auto">
+          <span class="action-icon">🚩</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleLike(bottleId) {
+  if (!currentUser) return;
+  const bottles = DB.get('bottles', []);
+  const b = bottles.find(x => x.id === bottleId);
+  if (!b) return;
+
+  const idx = b.likes.indexOf(currentUser.name);
+  if (idx >= 0) b.likes.splice(idx, 1);
+  else b.likes.push(currentUser.name);
+
+  DB.set('bottles', bottles);
+  if (currentTab === 'ocean') loadOcean();
+  if (currentTab === 'my') loadMyBottles();
+  if (currentDetailBottle === bottleId) openDetail(bottleId);
+}
+
+function reportBottle(bottleId) {
+  if (!currentUser) return;
+  showModal('举报漂流瓶', '确定要举报这个漂流瓶吗？管理员会审核处理。', () => {
+    const bottles = DB.get('bottles', []);
+    const b = bottles.find(x => x.id === bottleId);
+    if (!b) return;
+    if (!b.reports) b.reports = [];
+    if (!b.reports.includes(currentUser.name)) {
+      b.reports.push(currentUser.name);
+      DB.set('bottles', bottles);
+      toast('已举报，感谢你的反馈', 'success');
+    } else {
+      toast('你已经举报过了', 'warning');
+    }
+  });
+}
+
+function deleteBottle(bottleId) {
+  showModal('删除漂流瓶', '确定要删除这个漂流瓶吗？此操作不可恢复。', () => {
+    const bottles = DB.get('bottles', []);
+    const b = bottles.find(x => x.id === bottleId);
+    if (b) { b.deleted = true; DB.set('bottles', bottles); }
+    toast('已删除', 'success');
+    loadOcean();
+    closeDetail();
+  });
+}
+
+// ==================== DETAIL / REPLIES ====================
+function openDetail(bottleId) {
+  const bottles = DB.get('bottles', []);
+  const b = bottles.find(x => x.id === bottleId);
+  if (!b) return;
+  currentDetailBottle = bottleId;
+
+  const users = DB.get('users', {});
+  const isAnon = b.isAnon || !b.author;
+  const authorName = isAnon ? '匿名用户' : b.author;
+  const avatarEmoji = isAnon ? '🎭' : (users[b.author]?.avatar || '😊');
+  const avatarClass = isAnon ? 'anonymous' : 'named';
+  const liked = b.likes.includes(currentUser?.name);
+
+  let repliesHtml = '';
+  if (b.replies.length === 0) {
+    repliesHtml = '<div class="empty-state" style="padding:30px"><div class="empty-icon">💬</div><div class="empty-text">还没有回复，来做第一个吧~</div></div>';
+  } else {
+    repliesHtml = b.replies.map(r => {
+      const rAnon = r.isAnon || !r.author;
+      const rName = rAnon ? '匿名用户' : r.author;
+      const rEmoji = rAnon ? '🎭' : (users[r.author]?.avatar || '😊');
+      const rClass = rAnon ? 'anonymous' : 'named';
+      const rLiked = r.likes && r.likes.includes(currentUser?.name);
+      return `
+        <div class="reply-item">
+          <div class="reply-header">
+            <div class="reply-avatar ${rClass}">${rEmoji}</div>
+            <span class="reply-author">${escHtml(rName)}</span>
+            <span class="reply-time">${formatTime(r.createdAt)}</span>
+          </div>
+          <div class="reply-content">${escHtml(r.content)}</div>
+          <div class="reply-actions">
+            <button class="bottle-action ${rLiked ? 'liked' : ''}" onclick="toggleReplyLike('${bottleId}','${r.id}')">
+              <span class="action-icon">${rLiked ? '❤️' : '🤍'}</span>
+              <span>${r.likes ? r.likes.length : 0}</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('detailBody').innerHTML = `
+    <div class="detail-bottle">
+      <div class="bottle-header">
+        <div class="bottle-avatar ${avatarClass}">${avatarEmoji}</div>
+        <div class="bottle-meta">
+          <div class="bottle-author">${escHtml(authorName)} ${isAnon ? '<span class="bottle-tag">匿名</span>' : ''}</div>
+          <div class="bottle-time">${formatTime(b.createdAt)}</div>
+        </div>
+      </div>
+      <div class="bottle-content">${escHtml(b.content)}</div>
+      <div class="bottle-footer">
+        <button class="bottle-action ${liked ? 'liked' : ''}" onclick="toggleLike('${bottleId}')">
+          <span class="action-icon">${liked ? '❤️' : '🤍'}</span>
+          <span>${b.likes.length}</span>
+        </button>
+        <span class="bottle-action">
+          <span class="action-icon">💬</span>
+          <span>${b.replies.length} 回复</span>
+        </span>
+      </div>
+    </div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text-secondary)">💬 回复 (${b.replies.length})</div>
+    <div class="reply-list">${repliesHtml}</div>
+  `;
+
+  document.getElementById('detailOverlay').classList.add('active');
+}
+
+function closeDetail() {
+  document.getElementById('detailOverlay').classList.remove('active');
+  currentDetailBottle = null;
+}
+
+function sendReply() {
+  if (!currentDetailBottle || !currentUser) return;
+  const input = document.getElementById('replyInput');
+  const content = input.value.trim();
+  if (!content) return toast('请输入回复内容', 'warning');
+  if (content.length < 2) return toast('回复至少2个字符', 'warning');
+
+  // Check blocked words
+  const blocked = DB.get('blockedWords', []);
+  const found = blocked.find(w => content.includes(w));
+  if (found) return toast('回复包含敏感词，请修改', 'error');
+
+  const bottles = DB.get('bottles', []);
+  const b = bottles.find(x => x.id === currentDetailBottle);
+  if (!b) return;
+
+  const reply = {
+    id: 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    author: isAnon ? null : currentUser.name,
+    content,
+    isAnon,
+    likes: [],
+    createdAt: Date.now()
+  };
+
+  b.replies.push(reply);
+  DB.set('bottles', bottles);
+  input.value = '';
+  openDetail(currentDetailBottle);
+  toast('回复成功~', 'success');
+}
+
+function toggleReplyLike(bottleId, replyId) {
+  if (!currentUser) return;
+  const bottles = DB.get('bottles', []);
+  const b = bottles.find(x => x.id === bottleId);
+  if (!b) return;
+  const r = b.replies.find(x => x.id === replyId);
+  if (!r) return;
+  if (!r.likes) r.likes = [];
+
+  const idx = r.likes.indexOf(currentUser.name);
+  if (idx >= 0) r.likes.splice(idx, 1);
+  else r.likes.push(currentUser.name);
+
+  DB.set('bottles', bottles);
+  openDetail(bottleId);
+}
+
+// ==================== MY BOTTLES ====================
+function filterMy(type, el) {
+  myFilter = type;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadMyBottles();
+}
+
+function loadMyBottles() {
+  if (!currentUser) return;
+  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
+  let filtered = [];
+
+  if (myFilter === 'sent') {
+    filtered = bottles.filter(b => b.author === currentUser.name);
+  } else if (myFilter === 'replied') {
+    filtered = bottles.filter(b => b.replies.some(r => r.author === currentUser.name));
+  } else if (myFilter === 'liked') {
+    filtered = bottles.filter(b => b.likes.includes(currentUser.name));
+  }
+
+  const list = document.getElementById('myList');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无记录</div></div>';
+    return;
+  }
+  list.innerHTML = filtered.map(b => renderBottleCard(b)).join('');
+}
+
+// ==================== ADMIN ====================
+function loadAdmin() {
+  const bottles = DB.get('bottles', []);
+  const users = DB.get('users', {});
+  const blocked = DB.get('blockedWords', []);
+  const admins = DB.get('adminAccounts', []);
+
+  if (!currentUser || !admins.includes(currentUser.name)) {
+    document.getElementById('adminPage').innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">仅管理员可访问</div></div>';
+    return;
+  }
+
+  // Stats
+  const activeBottles = bottles.filter(b => !b.deleted);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayCount = activeBottles.filter(b => b.createdAt >= today.getTime()).length;
+  const totalReplies = activeBottles.reduce((s, b) => s + b.replies.length, 0);
+
+  document.getElementById('statTotal').textContent = activeBottles.length;
+  document.getElementById('statToday').textContent = todayCount;
+  document.getElementById('statUsers').textContent = Object.keys(users).length;
+  document.getElementById('statReplies').textContent = totalReplies;
+
+  // Blocked words
+  document.getElementById('wordList').innerHTML = blocked.map(w => `
+    <div class="word-tag">${escHtml(w)}<span class="remove-word" onclick="removeBlockedWord('${escAttr(w)}')">✕</span></div>
+  `).join('');
+
+  // Users
+  document.getElementById('userList').innerHTML = Object.entries(users).map(([name, u]) => {
+    const isAdmin = admins.includes(name);
+    return `
+      <div class="user-item">
+        <div class="user-item-avatar">${u.avatar || '😊'}</div>
+        <div class="user-item-info">
+          <div class="user-item-name">${escHtml(name)} ${isAdmin ? '<span class="admin-badge">管理员</span>' : ''}</div>
+          <div class="user-item-meta">注册于 ${formatTime(u.createdAt)}</div>
+        </div>
+        ${!isAdmin && name !== 'admin' ? `<button class="btn btn-sm ${isAdmin ? 'btn-secondary' : 'btn-primary'}" onclick="toggleAdmin('${escAttr(name)}')">${isAdmin ? '取消管理' : '设为管理'}</button>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Reported
+  const reported = bottles.filter(b => !b.deleted && b.reports && b.reports.length > 0);
+  if (reported.length === 0) {
+    document.getElementById('reportedList').innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px">暂无举报</div>';
+  } else {
+    document.getElementById('reportedList').innerHTML = reported.map(b => `
+      <div class="reported-item">
+        <div class="reported-content">${escHtml(b.content.substring(0, 80))}${b.content.length > 80 ? '...' : ''}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🚩 ${b.reports.length} 次举报 · ${formatTime(b.createdAt)}</div>
+        <div class="reported-actions">
+          <button class="btn btn-sm btn-danger" onclick="deleteBottle('${b.id}');loadAdmin()">删除</button>
+          <button class="btn btn-sm btn-secondary" onclick="clearReports('${b.id}')">忽略</button>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function addBlockedWord() {
+  const input = document.getElementById('newWordInput');
+  const word = input.value.trim();
+  if (!word) return;
+  const blocked = DB.get('blockedWords', []);
+  if (blocked.includes(word)) return toast('该屏蔽词已存在', 'warning');
+  blocked.push(word);
+  DB.set('blockedWords', blocked);
+  input.value = '';
+  loadAdmin();
+  toast('已添加屏蔽词', 'success');
+}
+
+function removeBlockedWord(word) {
+  let blocked = DB.get('blockedWords', []);
+  blocked = blocked.filter(w => w !== word);
+  DB.set('blockedWords', blocked);
+  loadAdmin();
+  toast('已移除屏蔽词', 'success');
+}
+
+function toggleAdmin(name) {
+  const admins = DB.get('adminAccounts', []);
+  const idx = admins.indexOf(name);
+  if (idx >= 0) {
+    admins.splice(idx, 1);
+    toast(`已取消 ${name} 的管理员权限`, 'success');
+  } else {
+    if (admins.length >= 3) return toast('最多设置3个管理员', 'warning');
+    admins.push(name);
+    toast(`已将 ${name} 设为管理员`, 'success');
+  }
+  DB.set('adminAccounts', admins);
+  loadAdmin();
+  // Update current user's admin status
+  if (currentUser && admins.includes(currentUser.name)) {
+    document.getElementById('adminEntry').style.display = 'flex';
+  } else {
+    document.getElementById('adminEntry').style.display = 'none';
+  }
+}
+
+function clearReports(bottleId) {
+  const bottles = DB.get('bottles', []);
+  const b = bottles.find(x => x.id === bottleId);
+  if (b) { b.reports = []; DB.set('bottles', bottles); }
+  loadAdmin();
+  toast('已忽略举报', 'success');
+}
+
+// ==================== PROFILE ====================
+function updateProfile() {
+  if (!currentUser) return;
+  const users = DB.get('users', {});
+  const user = users[currentUser.name];
+  const admins = DB.get('adminAccounts', []);
+  const isAdmin = admins.includes(currentUser.name);
+
+  document.getElementById('profileAvatar').textContent = user?.avatar || '😊';
+  document.getElementById('profileName').textContent = currentUser.name;
+  document.getElementById('profileRole').textContent = isAdmin ? '🛡️ 管理员' : '普通用户';
+  document.getElementById('adminEntry').style.display = isAdmin ? 'flex' : 'none';
+
+  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
+  document.getElementById('pStatSent').textContent = bottles.filter(b => b.author === currentUser.name).length;
+  document.getElementById('pStatReply').textContent = bottles.reduce((s, b) => s + b.replies.filter(r => r.author === currentUser.name).length, 0);
+  document.getElementById('pStatLike').textContent = bottles.reduce((s, b) => s + (b.likes.includes(currentUser.name) ? 1 : 0), 0);
+}
+
+function showEditName() {
+  const modal = document.getElementById('modalContent');
+  modal.innerHTML = `
+    <div class="modal-title">修改昵称</div>
+    <input class="form-input" id="editNameInput" value="${escAttr(currentUser.name)}" maxlength="12" style="margin-bottom:16px">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="doEditName()">确认</button>
+    </div>
+  `;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function doEditName() {
+  const newName = document.getElementById('editNameInput').value.trim();
+  if (!newName || newName.length < 2) return toast('昵称至少2个字符', 'error');
+
+  const users = DB.get('users', {});
+  if (users[newName] && newName !== currentUser.name) return toast('该昵称已被使用', 'error');
+
+  // Transfer data
+  const oldName = currentUser.name;
+  users[newName] = users[oldName];
+  delete users[oldName];
+  DB.set('users', users);
+
+  // Update bottles
+  const bottles = DB.get('bottles', []);
+  bottles.forEach(b => {
+    if (b.author === oldName) b.author = newName;
+    b.replies.forEach(r => { if (r.author === oldName) r.author = newName; });
+    b.likes = b.likes.map(l => l === oldName ? newName : l);
+  });
+  DB.set('bottles', bottles);
+
+  // Update admin
+  const admins = DB.get('adminAccounts', []);
+  const idx = admins.indexOf(oldName);
+  if (idx >= 0) { admins[idx] = newName; DB.set('adminAccounts', admins); }
+
+  currentUser.name = newName;
+  DB.set('session', currentUser);
+  closeModal();
+  updateProfile();
+  toast('昵称修改成功', 'success');
+}
+
+// ==================== UI HELPERS ====================
+function toggleAnon() {
+  isAnon = !isAnon;
+  document.getElementById('anonToggle').classList.toggle('active', isAnon);
+}
+
+function updateCharCount() {
+  const len = document.getElementById('sendContent').value.length;
+  const el = document.getElementById('charCount');
+  el.textContent = len + ' / 500';
+  el.className = 'char-count' + (len > 450 ? (len > 500 ? ' over' : ' warn') : '');
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('#mainContent > .page, #mainContent > div > .page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+
+  const pageMap = { ocean: 'oceanPage', send: 'sendPage', my: 'myPage', admin: 'adminPage', profile: 'profilePage' };
+  const tabIdx = { ocean: 0, send: 1, my: 2, profile: 3 };
+
+  const pageEl = document.getElementById(pageMap[tab]);
+  if (pageEl) pageEl.classList.add('active');
+  if (tabIdx[tab] !== undefined) {
+    document.querySelectorAll('.tab-item')[tabIdx[tab]].classList.add('active');
+  }
+
+  if (tab === 'ocean') loadOcean();
+  if (tab === 'my') loadMyBottles();
+  if (tab === 'admin') loadAdmin();
+  if (tab === 'profile') updateProfile();
+}
+
+// ==================== MODAL ====================
+function showModal(title, text, onConfirm) {
+  const modal = document.getElementById('modalContent');
+  modal.innerHTML = `
+    <div class="modal-title">${title}</div>
+    <div class="modal-text">${text}</div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" id="modalConfirmBtn">确认</button>
+    </div>
+  `;
+  document.getElementById('modalConfirmBtn').onclick = () => { closeModal(); onConfirm(); };
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
+// ==================== TOAST ====================
+function toast(msg, type = '') {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
+}
+
+// ==================== UTILS ====================
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escAttr(str) {
+  return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+  if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function getRandomEmoji() {
+  const emojis = ['😊','😄','🥰','😎','🤗','🦊','🐱','🐶','🐼','🦄','🌸','🍀','⭐','🌙','🔥','💎','🎨','🎵','🌈','🦋'];
+  return emojis[Math.floor(Math.random() * emojis.length)];
+}
+
+function createBubbles() {
+  const ocean = document.getElementById('bgOcean');
+  for (let i = 0; i < 15; i++) {
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    const size = Math.random() * 80 + 20;
+    bubble.style.width = size + 'px';
+    bubble.style.height = size + 'px';
+    bubble.style.left = Math.random() * 100 + '%';
+    bubble.style.animationDuration = (Math.random() * 15 + 10) + 's';
+    bubble.style.animationDelay = (Math.random() * 10) + 's';
+    ocean.appendChild(bubble);
+  }
+}
+
+// Close detail on overlay click
+document.getElementById('detailOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeDetail();
+});
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// Enter key for login
+document.getElementById('loginPass').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') handleLogin();
+});
+
+// Enter key for reply
+document.getElementById('replyInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') sendReply();
+});
+</script>
+</body>
+</html>
