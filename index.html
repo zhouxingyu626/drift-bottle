@@ -493,6 +493,9 @@
   .user-item-info { flex: 1; }
   .user-item-name { font-size: 14px; font-weight: 600; }
   .user-item-meta { font-size: 11px; color: var(--text-muted); }
+
+  /* Loading state */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--text-secondary); }
 </style>
 </head>
 <body>
@@ -521,7 +524,7 @@
         <input class="form-input" id="loginPass" type="password" placeholder="设置登录密码" maxlength="20">
       </div>
       <div class="form-group" style="margin-top:20px">
-        <button class="btn btn-primary" onclick="handleLogin()">登录 / 注册</button>
+        <button class="btn btn-primary" id="loginBtn" onclick="handleLogin()">登录 / 注册</button>
       </div>
       <div style="text-align:center;margin-top:16px">
         <span style="font-size:12px;color:var(--text-muted)">首次输入将自动创建账号</span>
@@ -545,7 +548,9 @@
         <div class="ocean-title">🌊 大海</div>
         <div class="ocean-desc">捞一个漂流瓶，倾听别人的故事</div>
       </div>
-      <div class="bottle-list" id="oceanList"></div>
+      <div class="bottle-list" id="oceanList">
+        <div class="loading">加载中...</div>
+      </div>
     </div>
 
     <!-- Send Page -->
@@ -708,27 +713,16 @@
   <div class="modal" id="modalContent"></div>
 </div>
 
-<script>
-// ==================== DATA LAYER ====================
-const DB = {
-  get(key, def) {
-    try { const v = localStorage.getItem('drift_' + key); return v ? JSON.parse(v) : def; }
-    catch { return def; }
-  },
-  set(key, val) { localStorage.setItem('drift_' + key, JSON.stringify(val)); }
-};
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-// Initialize data
-function initData() {
-  if (!DB.get('inited')) {
-    DB.set('users', {});
-    DB.set('bottles', []);
-    DB.set('blockedWords', ['垃圾', '骗子', '诈骗', '色情', '赌博', '毒品', '枪支', '杀', '死全家']);
-    DB.set('reports', []);
-    DB.set('adminAccounts', ['admin', '管理员']);
-    DB.set('inited', true);
-  }
-}
+<script>
+// ==================== SUPABASE CONFIG ====================
+// 请替换为您自己的 Supabase 项目凭证
+const SUPABASE_URL = 'https://mhnieopqfsqhwziuaxsa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1obmllb3BxZnNxaHd6aXVheHNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODUxMTYsImV4cCI6MjA5NTM2MTExNn0.-OrZXR9mjI2b9UWavkE2vebOi9OIQCE4uHM';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ==================== STATE ====================
 let currentUser = null;
@@ -736,23 +730,52 @@ let currentTab = 'ocean';
 let currentDetailBottle = null;
 let myFilter = 'sent';
 let isAnon = true;
+let usersCache = {};
+let adminsCache = [];
 
 // ==================== INIT ====================
-initData();
-createBubbles();
+async function init() {
+  createBubbles();
+  
+  // Check session
+  const session = localStorage.getItem('drift_session');
+  if (session) {
+    const sessionData = JSON.parse(session);
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('name', sessionData.name)
+      .single();
+    if (user) {
+      currentUser = sessionData;
+      usersCache[user.name] = user;
+      await loadAdmins();
+      enterApp();
+    }
+  }
+  
+  // Load users cache
+  await loadUsersCache();
+}
 
-// Check session
-const session = DB.get('session');
-if (session) {
-  const users = DB.get('users', {});
-  if (users[session.name]) {
-    currentUser = session;
-    enterApp();
+async function loadUsersCache() {
+  const { data } = await supabase.from('users').select('*');
+  if (data) {
+    data.forEach(u => usersCache[u.name] = u);
   }
 }
 
+async function loadAdmins() {
+  const { data } = await supabase.from('admin_accounts').select('name');
+  if (data) {
+    adminsCache = data.map(d => d.name);
+  }
+}
+
+init();
+
 // ==================== AUTH ====================
-function handleLogin() {
+async function handleLogin() {
   const name = document.getElementById('loginName').value.trim();
   const pass = document.getElementById('loginPass').value;
   if (!name) return toast('请输入昵称', 'error');
@@ -760,22 +783,42 @@ function handleLogin() {
   if (name.length < 2) return toast('昵称至少2个字符', 'error');
   if (pass.length < 3) return toast('密码至少3个字符', 'error');
 
-  const users = DB.get('users', {});
-  if (users[name]) {
-    if (users[name].password !== pass) return toast('密码错误', 'error');
+  // Check if user exists
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('*')
+    .eq('name', name)
+    .single();
+
+  if (existingUser) {
+    if (existingUser.password !== pass) return toast('密码错误', 'error');
+    usersCache[name] = existingUser;
   } else {
-    users[name] = { password: pass, createdAt: Date.now(), avatar: getRandomEmoji() };
-    DB.set('users', users);
+    // Create new user
+    const avatar = getRandomEmoji();
+    const { data: newUser, error } = await supabase
+      .from('users')
+      .insert({ name, password: pass, avatar })
+      .select()
+      .single();
+    
+    if (error) {
+      if (error.code === '23505') return toast('该昵称已被使用', 'error');
+      return toast('注册失败', 'error');
+    }
+    usersCache[name] = newUser;
   }
+  
   currentUser = { name };
-  DB.set('session', currentUser);
+  localStorage.setItem('drift_session', JSON.stringify(currentUser));
+  await loadAdmins();
   enterApp();
   toast('欢迎回来，' + name + '！', 'success');
 }
 
 function handleLogout() {
   currentUser = null;
-  DB.set('session', null);
+  localStorage.removeItem('drift_session');
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('loginPage').style.display = 'flex';
   document.getElementById('loginPage').classList.add('active');
@@ -783,7 +826,7 @@ function handleLogout() {
   document.getElementById('loginPass').value = '';
 }
 
-function enterApp() {
+async function enterApp() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('loginPage').classList.remove('active');
   const mc = document.getElementById('mainContent');
@@ -791,18 +834,16 @@ function enterApp() {
   mc.style.flexDirection = 'column';
   mc.style.flex = '1';
 
-  // Check admin
-  const admins = DB.get('adminAccounts', []);
-  const isAdmin = admins.includes(currentUser.name);
+  const isAdmin = adminsCache.includes(currentUser.name);
   document.getElementById('adminEntry').style.display = isAdmin ? 'flex' : 'none';
 
   updateProfile();
-  loadOcean();
+  await loadOcean();
   switchTab('ocean');
 }
 
 // ==================== TABS ====================
-function switchTab(tab) {
+async function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
@@ -817,20 +858,25 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-item')[tabIdx[tab]].classList.add('active');
   }
 
-  if (tab === 'ocean') loadOcean();
-  if (tab === 'my') loadMyBottles();
-  if (tab === 'admin') loadAdmin();
+  if (tab === 'ocean') await loadOcean();
+  if (tab === 'my') await loadMyBottles();
+  if (tab === 'admin') await loadAdmin();
   if (tab === 'profile') updateProfile();
 }
 
 // ==================== BOTTLES ====================
-function sendBottle() {
+async function loadBlockedWords() {
+  const { data } = await supabase.from('blocked_words').select('word');
+  return data ? data.map(w => w.word) : [];
+}
+
+async function sendBottle() {
   const content = document.getElementById('sendContent').value.trim();
   if (!content) return toast('请写点什么吧~', 'warning');
   if (content.length < 5) return toast('内容太短了，至少写5个字', 'warning');
 
   // Check blocked words
-  const blocked = DB.get('blockedWords', []);
+  const blocked = await loadBlockedWords();
   const found = blocked.find(w => content.includes(w));
   if (found) {
     document.getElementById('sendBlockedNotice').classList.add('show');
@@ -839,34 +885,35 @@ function sendBottle() {
   }
   document.getElementById('sendBlockedNotice').classList.remove('show');
 
-  const users = DB.get('users', {});
-  const bottle = {
-    id: 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-    author: isAnon ? null : currentUser.name,
-    content,
-    isAnon,
-    likes: [],
-    replies: [],
-    reports: [],
-    createdAt: Date.now(),
-    deleted: false
-  };
+  const { error } = await supabase
+    .from('bottles')
+    .insert({
+      author_name: isAnon ? null : currentUser.name,
+      content,
+      is_anon: isAnon,
+      likes: [],
+      reports: [],
+      deleted: false
+    });
 
-  const bottles = DB.get('bottles', []);
-  bottles.unshift(bottle);
-  DB.set('bottles', bottles);
+  if (error) return toast('发送失败', 'error');
 
   document.getElementById('sendContent').value = '';
   updateCharCount();
   toast('漂流瓶已投入大海~ 🫧', 'success');
-  switchTab('ocean');
+  await switchTab('ocean');
 }
 
-function loadOcean() {
-  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
+async function loadOcean() {
+  const { data: bottles, error } = await supabase
+    .from('bottles')
+    .select('*, replies(id)')
+    .eq('deleted', false)
+    .order('created_at', { ascending: false });
+
   const list = document.getElementById('oceanList');
 
-  if (bottles.length === 0) {
+  if (error || !bottles || bottles.length === 0) {
     list.innerHTML = '<div class="empty-state"><div class="empty-icon">🌊</div><div class="empty-text">大海空空如也，去扔一个瓶子吧~</div></div>';
     return;
   }
@@ -874,23 +921,32 @@ function loadOcean() {
   list.innerHTML = bottles.map(b => renderBottleCard(b)).join('');
 }
 
+async function loadRepliesForBottle(bottleId) {
+  const { data: replies } = await supabase
+    .from('replies')
+    .select('*')
+    .eq('bottle_id', bottleId)
+    .order('created_at', { ascending: true });
+  return replies || [];
+}
+
 function renderBottleCard(b) {
-  const users = DB.get('users', {});
-  const isAnon = b.isAnon || !b.author;
-  const authorName = isAnon ? '匿名用户' : b.author;
-  const avatarEmoji = isAnon ? '🎭' : (users[b.author]?.avatar || '😊');
-  const avatarClass = isAnon ? 'anonymous' : 'named';
-  const liked = b.likes.includes(currentUser?.name);
-  const admins = DB.get('adminAccounts', []);
-  const isAdmin = currentUser && admins.includes(currentUser.name);
-  const timeStr = formatTime(b.createdAt);
+  const user = usersCache[b.author_name];
+  const isAnonBottle = b.is_anon || !b.author_name;
+  const authorName = isAnonBottle ? '匿名用户' : b.author_name;
+  const avatarEmoji = isAnonBottle ? '🎭' : (user?.avatar || '😊');
+  const avatarClass = isAnonBottle ? 'anonymous' : 'named';
+  const liked = b.likes && b.likes.includes(currentUser?.name);
+  const isAdmin = currentUser && adminsCache.includes(currentUser.name);
+  const timeStr = formatTime(new Date(b.created_at).getTime());
+  const replyCount = b.replies ? b.replies.length : 0;
 
   return `
     <div class="bottle-card" onclick="openDetail('${b.id}')">
       <div class="bottle-header">
         <div class="bottle-avatar ${avatarClass}">${avatarEmoji}</div>
         <div class="bottle-meta">
-          <div class="bottle-author">${escHtml(authorName)} ${isAnon ? '<span class="bottle-tag">匿名</span>' : ''}</div>
+          <div class="bottle-author">${escHtml(authorName)} ${isAnonBottle ? '<span class="bottle-tag">匿名</span>' : ''}</div>
           <div class="bottle-time">${timeStr}</div>
         </div>
       </div>
@@ -898,11 +954,11 @@ function renderBottleCard(b) {
       <div class="bottle-footer">
         <button class="bottle-action ${liked ? 'liked' : ''}" onclick="event.stopPropagation();toggleLike('${b.id}')">
           <span class="action-icon">${liked ? '❤️' : '🤍'}</span>
-          <span>${b.likes.length}</span>
+          <span>${b.likes ? b.likes.length : 0}</span>
         </button>
         <button class="bottle-action" onclick="event.stopPropagation();openDetail('${b.id}')">
           <span class="action-icon">💬</span>
-          <span>${b.replies.length}</span>
+          <span>${replyCount}</span>
         </button>
         ${isAdmin ? `<button class="bottle-action" onclick="event.stopPropagation();deleteBottle('${b.id}')">
           <span class="action-icon">🗑️</span>
@@ -915,32 +971,50 @@ function renderBottleCard(b) {
   `;
 }
 
-function toggleLike(bottleId) {
+async function toggleLike(bottleId) {
   if (!currentUser) return;
-  const bottles = DB.get('bottles', []);
-  const b = bottles.find(x => x.id === bottleId);
-  if (!b) return;
+  
+  const { data: bottle } = await supabase
+    .from('bottles')
+    .select('likes')
+    .eq('id', bottleId)
+    .single();
+  
+  if (!bottle) return;
+  
+  let likes = bottle.likes || [];
+  const idx = likes.indexOf(currentUser.name);
+  if (idx >= 0) likes.splice(idx, 1);
+  else likes.push(currentUser.name);
 
-  const idx = b.likes.indexOf(currentUser.name);
-  if (idx >= 0) b.likes.splice(idx, 1);
-  else b.likes.push(currentUser.name);
-
-  DB.set('bottles', bottles);
-  if (currentTab === 'ocean') loadOcean();
-  if (currentTab === 'my') loadMyBottles();
-  if (currentDetailBottle === bottleId) openDetail(bottleId);
+  await supabase
+    .from('bottles')
+    .update({ likes })
+    .eq('id', bottleId);
+  
+  if (currentTab === 'ocean') await loadOcean();
+  if (currentTab === 'my') await loadMyBottles();
+  if (currentDetailBottle === bottleId) await openDetail(bottleId);
 }
 
-function reportBottle(bottleId) {
+async function reportBottle(bottleId) {
   if (!currentUser) return;
-  showModal('举报漂流瓶', '确定要举报这个漂流瓶吗？管理员会审核处理。', () => {
-    const bottles = DB.get('bottles', []);
-    const b = bottles.find(x => x.id === bottleId);
-    if (!b) return;
-    if (!b.reports) b.reports = [];
-    if (!b.reports.includes(currentUser.name)) {
-      b.reports.push(currentUser.name);
-      DB.set('bottles', bottles);
+  showModal('举报漂流瓶', '确定要举报这个漂流瓶吗？管理员会审核处理。', async () => {
+    const { data: bottle } = await supabase
+      .from('bottles')
+      .select('reports')
+      .eq('id', bottleId)
+      .single();
+    
+    if (!bottle) return;
+    
+    let reports = bottle.reports || [];
+    if (!reports.includes(currentUser.name)) {
+      reports.push(currentUser.name);
+      await supabase
+        .from('bottles')
+        .update({ reports })
+        .eq('id', bottleId);
       toast('已举报，感谢你的反馈', 'success');
     } else {
       toast('你已经举报过了', 'warning');
@@ -948,39 +1022,48 @@ function reportBottle(bottleId) {
   });
 }
 
-function deleteBottle(bottleId) {
-  showModal('删除漂流瓶', '确定要删除这个漂流瓶吗？此操作不可恢复。', () => {
-    const bottles = DB.get('bottles', []);
-    const b = bottles.find(x => x.id === bottleId);
-    if (b) { b.deleted = true; DB.set('bottles', bottles); }
+async function deleteBottle(bottleId) {
+  showModal('删除漂流瓶', '确定要删除这个漂流瓶吗？此操作不可恢复。', async () => {
+    await supabase
+      .from('bottles')
+      .update({ deleted: true })
+      .eq('id', bottleId);
     toast('已删除', 'success');
-    loadOcean();
+    await loadOcean();
     closeDetail();
   });
 }
 
 // ==================== DETAIL / REPLIES ====================
-function openDetail(bottleId) {
-  const bottles = DB.get('bottles', []);
-  const b = bottles.find(x => x.id === bottleId);
-  if (!b) return;
+async function openDetail(bottleId) {
+  const { data: bottle } = await supabase
+    .from('bottles')
+    .select('*')
+    .eq('id', bottleId)
+    .single();
+  
+  if (!bottle) return;
+  
   currentDetailBottle = bottleId;
 
-  const users = DB.get('users', {});
-  const isAnon = b.isAnon || !b.author;
-  const authorName = isAnon ? '匿名用户' : b.author;
-  const avatarEmoji = isAnon ? '🎭' : (users[b.author]?.avatar || '😊');
-  const avatarClass = isAnon ? 'anonymous' : 'named';
-  const liked = b.likes.includes(currentUser?.name);
-
+  const user = usersCache[bottle.author_name];
+  const isAnonBottle = bottle.is_anon || !bottle.author_name;
+  const authorName = isAnonBottle ? '匿名用户' : bottle.author_name;
+  const avatarEmoji = isAnonBottle ? '🎭' : (user?.avatar || '😊');
+  const avatarClass = isAnonBottle ? 'anonymous' : 'named';
+  const liked = bottle.likes && bottle.likes.includes(currentUser?.name);
+  
+  const replies = await loadRepliesForBottle(bottleId);
+  
   let repliesHtml = '';
-  if (b.replies.length === 0) {
+  if (replies.length === 0) {
     repliesHtml = '<div class="empty-state" style="padding:30px"><div class="empty-icon">💬</div><div class="empty-text">还没有回复，来做第一个吧~</div></div>';
   } else {
-    repliesHtml = b.replies.map(r => {
-      const rAnon = r.isAnon || !r.author;
-      const rName = rAnon ? '匿名用户' : r.author;
-      const rEmoji = rAnon ? '🎭' : (users[r.author]?.avatar || '😊');
+    repliesHtml = replies.map(r => {
+      const rUser = usersCache[r.author_name];
+      const rAnon = r.is_anon || !r.author_name;
+      const rName = rAnon ? '匿名用户' : r.author_name;
+      const rEmoji = rAnon ? '🎭' : (rUser?.avatar || '😊');
       const rClass = rAnon ? 'anonymous' : 'named';
       const rLiked = r.likes && r.likes.includes(currentUser?.name);
       return `
@@ -988,7 +1071,7 @@ function openDetail(bottleId) {
           <div class="reply-header">
             <div class="reply-avatar ${rClass}">${rEmoji}</div>
             <span class="reply-author">${escHtml(rName)}</span>
-            <span class="reply-time">${formatTime(r.createdAt)}</span>
+            <span class="reply-time">${formatTime(new Date(r.created_at).getTime())}</span>
           </div>
           <div class="reply-content">${escHtml(r.content)}</div>
           <div class="reply-actions">
@@ -1007,23 +1090,23 @@ function openDetail(bottleId) {
       <div class="bottle-header">
         <div class="bottle-avatar ${avatarClass}">${avatarEmoji}</div>
         <div class="bottle-meta">
-          <div class="bottle-author">${escHtml(authorName)} ${isAnon ? '<span class="bottle-tag">匿名</span>' : ''}</div>
-          <div class="bottle-time">${formatTime(b.createdAt)}</div>
+          <div class="bottle-author">${escHtml(authorName)} ${isAnonBottle ? '<span class="bottle-tag">匿名</span>' : ''}</div>
+          <div class="bottle-time">${formatTime(new Date(bottle.created_at).getTime())}</div>
         </div>
       </div>
-      <div class="bottle-content">${escHtml(b.content)}</div>
+      <div class="bottle-content">${escHtml(bottle.content)}</div>
       <div class="bottle-footer">
         <button class="bottle-action ${liked ? 'liked' : ''}" onclick="toggleLike('${bottleId}')">
           <span class="action-icon">${liked ? '❤️' : '🤍'}</span>
-          <span>${b.likes.length}</span>
+          <span>${bottle.likes ? bottle.likes.length : 0}</span>
         </button>
         <span class="bottle-action">
           <span class="action-icon">💬</span>
-          <span>${b.replies.length} 回复</span>
+          <span>${replies.length} 回复</span>
         </span>
       </div>
     </div>
-    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text-secondary)">💬 回复 (${b.replies.length})</div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text-secondary)">💬 回复 (${replies.length})</div>
     <div class="reply-list">${repliesHtml}</div>
   `;
 
@@ -1035,7 +1118,7 @@ function closeDetail() {
   currentDetailBottle = null;
 }
 
-function sendReply() {
+async function sendReply() {
   if (!currentDetailBottle || !currentUser) return;
   const input = document.getElementById('replyInput');
   const content = input.value.trim();
@@ -1043,45 +1126,49 @@ function sendReply() {
   if (content.length < 2) return toast('回复至少2个字符', 'warning');
 
   // Check blocked words
-  const blocked = DB.get('blockedWords', []);
+  const blocked = await loadBlockedWords();
   const found = blocked.find(w => content.includes(w));
   if (found) return toast('回复包含敏感词，请修改', 'error');
 
-  const bottles = DB.get('bottles', []);
-  const b = bottles.find(x => x.id === currentDetailBottle);
-  if (!b) return;
+  const { error } = await supabase
+    .from('replies')
+    .insert({
+      bottle_id: currentDetailBottle,
+      author_name: isAnon ? null : currentUser.name,
+      content,
+      is_anon: isAnon,
+      likes: []
+    });
 
-  const reply = {
-    id: 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-    author: isAnon ? null : currentUser.name,
-    content,
-    isAnon,
-    likes: [],
-    createdAt: Date.now()
-  };
-
-  b.replies.push(reply);
-  DB.set('bottles', bottles);
+  if (error) return toast('回复失败', 'error');
+  
   input.value = '';
-  openDetail(currentDetailBottle);
+  await openDetail(currentDetailBottle);
   toast('回复成功~', 'success');
 }
 
-function toggleReplyLike(bottleId, replyId) {
+async function toggleReplyLike(bottleId, replyId) {
   if (!currentUser) return;
-  const bottles = DB.get('bottles', []);
-  const b = bottles.find(x => x.id === bottleId);
-  if (!b) return;
-  const r = b.replies.find(x => x.id === replyId);
-  if (!r) return;
-  if (!r.likes) r.likes = [];
+  
+  const { data: reply } = await supabase
+    .from('replies')
+    .select('likes')
+    .eq('id', replyId)
+    .single();
+  
+  if (!reply) return;
+  
+  let likes = reply.likes || [];
+  const idx = likes.indexOf(currentUser.name);
+  if (idx >= 0) likes.splice(idx, 1);
+  else likes.push(currentUser.name);
 
-  const idx = r.likes.indexOf(currentUser.name);
-  if (idx >= 0) r.likes.splice(idx, 1);
-  else r.likes.push(currentUser.name);
-
-  DB.set('bottles', bottles);
-  openDetail(bottleId);
+  await supabase
+    .from('replies')
+    .update({ likes })
+    .eq('id', replyId);
+  
+  await openDetail(bottleId);
 }
 
 // ==================== MY BOTTLES ====================
@@ -1092,17 +1179,34 @@ function filterMy(type, el) {
   loadMyBottles();
 }
 
-function loadMyBottles() {
+async function loadMyBottles() {
   if (!currentUser) return;
-  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
-  let filtered = [];
+  
+  const { data: bottles, error } = await supabase
+    .from('bottles')
+    .select('*, replies(id)')
+    .eq('deleted', false)
+    .order('created_at', { ascending: false });
 
+  if (error || !bottles) {
+    document.getElementById('myList').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无记录</div></div>';
+    return;
+  }
+  
+  let filtered = [];
+  
   if (myFilter === 'sent') {
-    filtered = bottles.filter(b => b.author === currentUser.name);
+    filtered = bottles.filter(b => b.author_name === currentUser.name);
   } else if (myFilter === 'replied') {
-    filtered = bottles.filter(b => b.replies.some(r => r.author === currentUser.name));
+    const { data: myReplies } = await supabase
+      .from('replies')
+      .select('bottle_id')
+      .eq('author_name', currentUser.name);
+    
+    const repliedBottleIds = [...new Set((myReplies || []).map(r => r.bottle_id))];
+    filtered = bottles.filter(b => repliedBottleIds.includes(b.id));
   } else if (myFilter === 'liked') {
-    filtered = bottles.filter(b => b.likes.includes(currentUser.name));
+    filtered = bottles.filter(b => b.likes && b.likes.includes(currentUser.name));
   }
 
   const list = document.getElementById('myList');
@@ -1114,57 +1218,62 @@ function loadMyBottles() {
 }
 
 // ==================== ADMIN ====================
-function loadAdmin() {
-  const bottles = DB.get('bottles', []);
-  const users = DB.get('users', {});
-  const blocked = DB.get('blockedWords', []);
-  const admins = DB.get('adminAccounts', []);
-
-  if (!currentUser || !admins.includes(currentUser.name)) {
+async function loadAdmin() {
+  if (!currentUser || !adminsCache.includes(currentUser.name)) {
     document.getElementById('adminPage').innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">仅管理员可访问</div></div>';
     return;
   }
 
   // Stats
-  const activeBottles = bottles.filter(b => !b.deleted);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayCount = activeBottles.filter(b => b.createdAt >= today.getTime()).length;
-  const totalReplies = activeBottles.reduce((s, b) => s + b.replies.length, 0);
+  const { data: bottles } = await supabase
+    .from('bottles')
+    .select('*, replies(id)')
+    .eq('deleted', false);
+  
+  const { data: users } = await supabase.from('users').select('*');
+  const { data: allReplies } = await supabase.from('replies').select('id');
+  
+  const activeBottles = bottles || [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayCount = activeBottles.filter(b => new Date(b.created_at) >= today).length;
+  const totalReplies = activeBottles.reduce((s, b) => s + (b.replies ? b.replies.length : 0), 0);
 
   document.getElementById('statTotal').textContent = activeBottles.length;
   document.getElementById('statToday').textContent = todayCount;
-  document.getElementById('statUsers').textContent = Object.keys(users).length;
+  document.getElementById('statUsers').textContent = (users || []).length;
   document.getElementById('statReplies').textContent = totalReplies;
 
   // Blocked words
-  document.getElementById('wordList').innerHTML = blocked.map(w => `
-    <div class="word-tag">${escHtml(w)}<span class="remove-word" onclick="removeBlockedWord('${escAttr(w)}')">✕</span></div>
+  const { data: blockedWords } = await supabase.from('blocked_words').select('word').order('created_at', { ascending: true });
+  document.getElementById('wordList').innerHTML = (blockedWords || []).map(w => `
+    <div class="word-tag">${escHtml(w.word)}<span class="remove-word" onclick="removeBlockedWord('${escAttr(w.word)}')">✕</span></div>
   `).join('');
 
   // Users
-  document.getElementById('userList').innerHTML = Object.entries(users).map(([name, u]) => {
-    const isAdmin = admins.includes(name);
+  document.getElementById('userList').innerHTML = (users || []).map(u => {
+    const isAdmin = adminsCache.includes(u.name);
     return `
       <div class="user-item">
         <div class="user-item-avatar">${u.avatar || '😊'}</div>
         <div class="user-item-info">
-          <div class="user-item-name">${escHtml(name)} ${isAdmin ? '<span class="admin-badge">管理员</span>' : ''}</div>
-          <div class="user-item-meta">注册于 ${formatTime(u.createdAt)}</div>
+          <div class="user-item-name">${escHtml(u.name)} ${isAdmin ? '<span class="admin-badge">管理员</span>' : ''}</div>
+          <div class="user-item-meta">注册于 ${formatTime(new Date(u.created_at).getTime())}</div>
         </div>
-        ${!isAdmin && name !== 'admin' ? `<button class="btn btn-sm ${isAdmin ? 'btn-secondary' : 'btn-primary'}" onclick="toggleAdmin('${escAttr(name)}')">${isAdmin ? '取消管理' : '设为管理'}</button>` : ''}
+        ${!isAdmin && u.name !== 'admin' ? `<button class="btn btn-sm ${isAdmin ? 'btn-secondary' : 'btn-primary'}" onclick="toggleAdmin('${escAttr(u.name)}')">${isAdmin ? '取消管理' : '设为管理'}</button>` : ''}
       </div>
     `;
   }).join('');
 
   // Reported
-  const reported = bottles.filter(b => !b.deleted && b.reports && b.reports.length > 0);
+  const reported = activeBottles.filter(b => b.reports && b.reports.length > 0);
   if (reported.length === 0) {
     document.getElementById('reportedList').innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px">暂无举报</div>';
   } else {
     document.getElementById('reportedList').innerHTML = reported.map(b => `
       <div class="reported-item">
         <div class="reported-content">${escHtml(b.content.substring(0, 80))}${b.content.length > 80 ? '...' : ''}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🚩 ${b.reports.length} 次举报 · ${formatTime(b.createdAt)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🚩 ${b.reports.length} 次举报 · ${formatTime(new Date(b.created_at).getTime())}</div>
         <div class="reported-actions">
           <button class="btn btn-sm btn-danger" onclick="deleteBottle('${b.id}');loadAdmin()">删除</button>
           <button class="btn btn-sm btn-secondary" onclick="clearReports('${b.id}')">忽略</button>
@@ -1174,73 +1283,101 @@ function loadAdmin() {
   }
 }
 
-function addBlockedWord() {
+async function addBlockedWord() {
   const input = document.getElementById('newWordInput');
   const word = input.value.trim();
   if (!word) return;
-  const blocked = DB.get('blockedWords', []);
-  if (blocked.includes(word)) return toast('该屏蔽词已存在', 'warning');
-  blocked.push(word);
-  DB.set('blockedWords', blocked);
+  
+  const { error } = await supabase
+    .from('blocked_words')
+    .insert({ word });
+  
+  if (error) {
+    if (error.code === '23505') return toast('该屏蔽词已存在', 'warning');
+    return toast('添加失败', 'error');
+  }
+  
   input.value = '';
-  loadAdmin();
+  await loadAdmin();
   toast('已添加屏蔽词', 'success');
 }
 
-function removeBlockedWord(word) {
-  let blocked = DB.get('blockedWords', []);
-  blocked = blocked.filter(w => w !== word);
-  DB.set('blockedWords', blocked);
-  loadAdmin();
+async function removeBlockedWord(word) {
+  await supabase
+    .from('blocked_words')
+    .delete()
+    .eq('word', word);
+  
+  await loadAdmin();
   toast('已移除屏蔽词', 'success');
 }
 
-function toggleAdmin(name) {
-  const admins = DB.get('adminAccounts', []);
-  const idx = admins.indexOf(name);
-  if (idx >= 0) {
-    admins.splice(idx, 1);
+async function toggleAdmin(name) {
+  const isAdmin = adminsCache.includes(name);
+  
+  if (isAdmin) {
+    await supabase
+      .from('admin_accounts')
+      .delete()
+      .eq('name', name);
     toast(`已取消 ${name} 的管理员权限`, 'success');
   } else {
-    if (admins.length >= 3) return toast('最多设置3个管理员', 'warning');
-    admins.push(name);
+    if (adminsCache.length >= 3) return toast('最多设置3个管理员', 'warning');
+    await supabase
+      .from('admin_accounts')
+      .insert({ name });
     toast(`已将 ${name} 设为管理员`, 'success');
   }
-  DB.set('adminAccounts', admins);
-  loadAdmin();
+  
+  await loadAdmins();
+  await loadAdmin();
+  
   // Update current user's admin status
-  if (currentUser && admins.includes(currentUser.name)) {
-    document.getElementById('adminEntry').style.display = 'flex';
-  } else {
-    document.getElementById('adminEntry').style.display = 'none';
+  if (currentUser) {
+    const isCurrentAdmin = adminsCache.includes(currentUser.name);
+    document.getElementById('adminEntry').style.display = isCurrentAdmin ? 'flex' : 'none';
   }
 }
 
-function clearReports(bottleId) {
-  const bottles = DB.get('bottles', []);
-  const b = bottles.find(x => x.id === bottleId);
-  if (b) { b.reports = []; DB.set('bottles', bottles); }
-  loadAdmin();
+async function clearReports(bottleId) {
+  await supabase
+    .from('bottles')
+    .update({ reports: [] })
+    .eq('id', bottleId);
+  
+  await loadAdmin();
   toast('已忽略举报', 'success');
 }
 
 // ==================== PROFILE ====================
-function updateProfile() {
+async function updateProfile() {
   if (!currentUser) return;
-  const users = DB.get('users', {});
-  const user = users[currentUser.name];
-  const admins = DB.get('adminAccounts', []);
-  const isAdmin = admins.includes(currentUser.name);
+  
+  const user = usersCache[currentUser.name];
+  const isAdmin = adminsCache.includes(currentUser.name);
 
   document.getElementById('profileAvatar').textContent = user?.avatar || '😊';
   document.getElementById('profileName').textContent = currentUser.name;
   document.getElementById('profileRole').textContent = isAdmin ? '🛡️ 管理员' : '普通用户';
   document.getElementById('adminEntry').style.display = isAdmin ? 'flex' : 'none';
 
-  const bottles = DB.get('bottles', []).filter(b => !b.deleted);
-  document.getElementById('pStatSent').textContent = bottles.filter(b => b.author === currentUser.name).length;
-  document.getElementById('pStatReply').textContent = bottles.reduce((s, b) => s + b.replies.filter(r => r.author === currentUser.name).length, 0);
-  document.getElementById('pStatLike').textContent = bottles.reduce((s, b) => s + (b.likes.includes(currentUser.name) ? 1 : 0), 0);
+  const { data: bottles } = await supabase
+    .from('bottles')
+    .select('*, replies(author_name)')
+    .eq('deleted', false);
+  
+  if (!bottles) {
+    document.getElementById('pStatSent').textContent = '0';
+    document.getElementById('pStatReply').textContent = '0';
+    document.getElementById('pStatLike').textContent = '0';
+    return;
+  }
+  
+  document.getElementById('pStatSent').textContent = bottles.filter(b => b.author_name === currentUser.name).length;
+  document.getElementById('pStatReply').textContent = bottles.reduce((s, b) => 
+    s + (b.replies ? b.replies.filter(r => r.author_name === currentUser.name).length : 0), 0);
+  document.getElementById('pStatLike').textContent = bottles.reduce((s, b) => 
+    s + (b.likes && b.likes.includes(currentUser.name) ? 1 : 0), 0);
 }
 
 function showEditName() {
@@ -1256,35 +1393,57 @@ function showEditName() {
   document.getElementById('modalOverlay').classList.add('active');
 }
 
-function doEditName() {
+async function doEditName() {
   const newName = document.getElementById('editNameInput').value.trim();
   if (!newName || newName.length < 2) return toast('昵称至少2个字符', 'error');
 
-  const users = DB.get('users', {});
-  if (users[newName] && newName !== currentUser.name) return toast('该昵称已被使用', 'error');
+  // Check if new name exists
+  const { data: existing } = await supabase
+    .from('users')
+    .select('name')
+    .eq('name', newName)
+    .single();
+  
+  if (existing && newName !== currentUser.name) return toast('该昵称已被使用', 'error');
 
-  // Transfer data
   const oldName = currentUser.name;
-  users[newName] = users[oldName];
-  delete users[oldName];
-  DB.set('users', users);
-
-  // Update bottles
-  const bottles = DB.get('bottles', []);
-  bottles.forEach(b => {
-    if (b.author === oldName) b.author = newName;
-    b.replies.forEach(r => { if (r.author === oldName) r.author = newName; });
-    b.likes = b.likes.map(l => l === oldName ? newName : l);
-  });
-  DB.set('bottles', bottles);
-
+  
+  // Update user name
+  await supabase
+    .from('users')
+    .update({ name: newName, updated_at: new Date().toISOString() })
+    .eq('name', oldName);
+  
+  // Update bottles author
+  await supabase
+    .from('bottles')
+    .update({ author_name: newName })
+    .eq('author_name', oldName);
+  
+  // Update replies author
+  await supabase
+    .from('replies')
+    .update({ author_name: newName })
+    .eq('author_name', oldName);
+  
   // Update admin
-  const admins = DB.get('adminAccounts', []);
-  const idx = admins.indexOf(oldName);
-  if (idx >= 0) { admins[idx] = newName; DB.set('adminAccounts', admins); }
+  if (adminsCache.includes(oldName)) {
+    await supabase
+      .from('admin_accounts')
+      .delete()
+      .eq('name', oldName);
+    await supabase
+      .from('admin_accounts')
+      .insert({ name: newName });
+  }
 
   currentUser.name = newName;
-  DB.set('session', currentUser);
+  localStorage.setItem('drift_session', JSON.stringify(currentUser));
+  
+  // Reload caches
+  await loadUsersCache();
+  await loadAdmins();
+  
   closeModal();
   updateProfile();
   toast('昵称修改成功', 'success');
@@ -1301,26 +1460,6 @@ function updateCharCount() {
   const el = document.getElementById('charCount');
   el.textContent = len + ' / 500';
   el.className = 'char-count' + (len > 450 ? (len > 500 ? ' over' : ' warn') : '');
-}
-
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('#mainContent > .page, #mainContent > div > .page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-
-  const pageMap = { ocean: 'oceanPage', send: 'sendPage', my: 'myPage', admin: 'adminPage', profile: 'profilePage' };
-  const tabIdx = { ocean: 0, send: 1, my: 2, profile: 3 };
-
-  const pageEl = document.getElementById(pageMap[tab]);
-  if (pageEl) pageEl.classList.add('active');
-  if (tabIdx[tab] !== undefined) {
-    document.querySelectorAll('.tab-item')[tabIdx[tab]].classList.add('active');
-  }
-
-  if (tab === 'ocean') loadOcean();
-  if (tab === 'my') loadMyBottles();
-  if (tab === 'admin') loadAdmin();
-  if (tab === 'profile') updateProfile();
 }
 
 // ==================== MODAL ====================
@@ -1354,6 +1493,7 @@ function toast(msg, type = '') {
 
 // ==================== UTILS ====================
 function escHtml(str) {
+  if (!str) return '';
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
